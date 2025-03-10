@@ -1,1 +1,4 @@
 selenium
+kafka-python
+nest_asyncio
+beautifulsoup4
