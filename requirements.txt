@@ -2,3 +2,8 @@ selenium
 kafka-python
 nest_asyncio
 beautifulsoup4
+llama-index-core 
+llama-index-llms-openai 
+llama-index-multi-modal-llms-openai
+llama_index.readers.file
+pandas_ta

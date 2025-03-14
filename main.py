@@ -1,14 +1,50 @@
-import json
 import requests
-import time
-import pandas as pd
-from kafka import KafkaProducer, KafkaConsumer
 from bs4 import BeautifulSoup
+import json
+import pandas as pd
+import pandas_ta as ta
 import asyncio
-import nest_asyncio
 import threading
+import nest_asyncio
+import time
+import os
+from kafka import KafkaProducer, KafkaConsumer
+from llama_index.core.program import LLMTextCompletionProgram
+from llama_index.multi_modal_llms.openai import OpenAIMultiModal
+from llama_index.core import SimpleDirectoryReader
+from llama_index.core.workflow import Workflow, step, Event, Context
+from llama_index.core.bridge.pydantic import BaseModel, Field
+from llama_index.llms.openai import OpenAI
+from typing import Optional, Any
 
+nest_asyncio.apply()
+
+# Set your OpenAI API key to the environment variable
+os.environ['OPENAI_API_KEY'] = "YOUR_OPENAI_API_KEY"
+
+# Global flag to stop the program
 stop_flag = False
+
+def stop_listener():
+    global stop_flag
+    while True:
+        user_input = input("Enter 'stop' to stop the program:")
+        if user_input.lower() == 'stop':
+            stop_flag = True
+            print("Stopping the program...")
+            break
+
+# Start a single thread for the stop listener
+threading.Thread(target=stop_listener, daemon=True).start()
+
+
+class TradingDecisionResult(BaseModel):
+    """
+    Model used to store the trading decision result.
+    """
+    decision: str = Field(description="Trading actions: 'buy', 'sell'or 'hold'")
+    reasoning: str = Field(description="Reasoning behind the trading decision")
+
 
 async def kafka_producer():
     # Kafka Producer Configuration
