@@ -19,8 +19,8 @@ from typing import Optional, Any
 
 nest_asyncio.apply()
 
-# Set your OpenAI API key to the environment variable
-os.environ['OPENAI_API_KEY'] = "YOUR_OPENAI_API_KEY"
+# # Set your OpenAI API key to the environment variable
+# os.environ['OPENAI_API_KEY'] = "YOUR_OPENAI_API_KEY"
 
 # Global flag to stop the program
 stop_flag = False
@@ -44,6 +44,122 @@ class TradingDecisionResult(BaseModel):
     """
     decision: str = Field(description="Trading actions: 'buy', 'sell'or 'hold'")
     reasoning: str = Field(description="Reasoning behind the trading decision")
+
+
+# Initialize workflow
+class InvestmentBotWorkflow(Workflow):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.image_analysis_done = False
+
+    async def analyze_image(self, ctx: Context, ev: Event) -> None:
+        if not self.image_analysis_done:
+            print("Analyzing the image...")
+            openai_mm_llm = OpenAIMultiModal(
+                model="gpt-4o",
+                api_key=os.getenv("OPENAI_API_KEY"),
+                max_new_tokens=512
+            )
+            image_path = "img/eurousd_chart.png"
+            image_documents = SimpleDirectoryReader(input_files=[image_path]).load()
+            response = openai_mm_llm.complete(
+                prompt="Analyze the EUR/USD daily chart provided in the image and provide insights on the price trend.",
+                documents=image_documents
+            )
+            response_text = response[0].text
+            await ctx.set("image_analysis", response_text)
+            self.image_analysis_done = True
+            print("Image analysis completed.", response_text)
+
+    @step
+    async def analyze_data(self, ctx: Context, ev: Event) -> None:
+        '''
+        Executing data analysis step and provide trade decision based on technical indicators.
+        '''
+        df = await ctx.get('df')
+        if df is None or df.empty:
+            print("Dataframe is empty. No data to analyze.")
+            return
+
+        # Get image analysis result
+        image_analysis = await ctx.get('image_analysis', "No analysis")
+    
+        if len(df) < 6:
+            print("Not enough data to analyze.")
+            return
+        
+        # Adjust indicator periods based on the data length
+        ema_period = min(5, len(df))
+        rsi_period = min(5, len(df))
+        bb_period = min(5, len(df))
+
+        # Calculate technical indicators
+        df['EMA_5'] = ta.ema(df['Mid_Price'], length=ema_period)
+        df['RSI'] = ta.rsi(df['Mid_Price'], length=rsi_period)
+        bb = ta.bbands(df['Mid_Price'], length=bb_period, std=2)
+
+        if bb is not None and not bb.empty:
+            bb_columns = bb.columns.tolist()
+
+            bbl_column = [col for col in bb_columns if col.startswith('BBL')]
+            bbm_column = [col for col in bb_columns if col.startswith('BBM')]
+            bbu_column = [col for col in bb_columns if col.startswith('BBU')]
+
+            bb_selected = bb[[bbl_column[0], bbm_column[0], bbu_column[0]]]
+            bb_selected.columns = ['BBL', 'BBM', 'BBU']
+
+            df = pd.concat([df, bb_selected], axis=1)
+
+        else:
+            # Get the last 5 prices
+            last_prices = df['Mid_Price'].tail(5).tolist()
+        
+        latest_data = df.iloc[-1]
+
+        # Dealing with missing values
+        indicators = {}
+        indicators['EMA_5'] = latest_data.get('EMA_5', 'Not available')
+        indicators['RSI'] = latest_data.get('RSI', 'Not available')
+        indicators['BBL'] = latest_data.get('BBL', 'Not available')
+        indicators['BBM'] = latest_data.get('BBM', 'Not available')
+        indicators['BBU'] = latest_data.get('BBU', 'Not available')
+
+        for key, value in indicators.items():
+            if pd.isna(value):
+                print(f"Missing value for {key}. Skipping the trade decision.")
+                indicators[key] = 'Not available'
+                
+        # Prompts for GPT3
+        prompt = (
+            f"Latest price: {last_prices}\n"
+            f"Latest technical indicators:\n"
+            f"EMA 5: {indicators['EMA_5']}\n"
+            f"RSI: {indicators['RSI']}\n"
+            f"BBL: {indicators['BBL']} \n"
+            f"BBM: {indicators['BBM']} \n"
+            f"BBU: {indicators['BBU']} \n"
+            f"EURUSD Daily Chart Analysis: {image_analysis}\n"
+            "Based on the analysis, provide a trading decision: 'buy', 'sell' or 'hold'. Explain the reasoning behind the decision."
+        )
+
+        try:
+            llm_gpt3 = OpenAI(
+                model="gpt-3.5-turbo", 
+                api_key=os.getenv("OPENAI_API_KEY"),
+                max_new_tokens=512
+            )
+            program = LLMTextCompletionProgram.from_defaults(
+                output_cls=TradingDecisionResult,
+                prompt_template_str=prompt,
+                llm=llm_gpt3
+            )
+            trading_decision_result = program()
+            decision = trading_decision_result.decision
+            reasoning = trading_decision_result.reasoning
+            print(f"Trading Decision: {decision}")
+            print(f"Reasoning: {reasoning}")
+        except Exception as e:
+            print(f"Error occurred while generating trading decision: {e}")
 
 
 async def kafka_producer():
@@ -135,7 +251,7 @@ async def main():
         consumer_thread.join()
 
 try:
-    nest_asyncio.apply()
+    # nest_asyncio.apply()
     asyncio.run(main())
 except KeyboardInterrupt:
     stop_flag = True
