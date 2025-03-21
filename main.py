@@ -1,6 +1,8 @@
 import requests
 from bs4 import BeautifulSoup
 import json
+import numpy as np
+from numpy import nan as npNan
 import pandas as pd
 import pandas_ta as ta
 import asyncio
@@ -8,6 +10,7 @@ import threading
 import nest_asyncio
 import time
 import os
+
 from kafka import KafkaProducer, KafkaConsumer
 from llama_index.core.program import LLMTextCompletionProgram
 from llama_index.multi_modal_llms.openai import OpenAIMultiModal
