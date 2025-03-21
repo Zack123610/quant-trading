@@ -1,8 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import json
-import numpy as np
-from numpy import nan as npNan
 import pandas as pd
 import pandas_ta as ta
 import asyncio

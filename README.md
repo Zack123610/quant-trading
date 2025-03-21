@@ -14,3 +14,7 @@ docker exec --workdir /opt/kafka/bin/ -it broker sh
 ```
 ./kafka-topics.sh --bootstrap-server localhost:9092 --create --topic eurusd_bidask
 ```
+
+## Troubleshoot 🛠️
+You may run into import error with pandas_ta. <br>
+Just go to the problematic file and change `NaN` to `nan`.
